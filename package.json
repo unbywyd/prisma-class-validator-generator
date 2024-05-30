@@ -1,11 +1,11 @@
 {
-  "name": "prisma-class-validator-generator",
+  "name": "prisma-class-dto-generator",
   "version": "5.0.0",
-  "description": "Prisma 2+ generator to emit typescript models of your database with class validator",
-  "repository": "https://github.com/omar-dulaimi/prisma-class-validator-generator",
+  "description": "Prisma 2+ generator to emit TypeScript models of your database with class validator and class transformer",
   "bin": {
-    "prisma-class-validator-generator": "lib/generator.js"
+    "prisma-class-dto-generator": "lib/generator.js"
   },
+  "main": "lib/generator.js",
   "scripts": {
     "start": "tsc && npx prisma generate",
     "package:publish": "./package.sh && cd package && npm publish"
@@ -14,20 +14,28 @@
     "name": "Omar Dulaimi",
     "url": "https://github.com/omar-dulaimi"
   },
+  "contributors": [
+    {
+      "name": "Artyom Gorlovetskiy",
+      "url": "https://github.com/unbywyd"
+    }
+  ],
   "keywords": [
     "prisma",
     "prisma-client",
     "prisma-schema",
     "class-validator",
+    "class-transformer",
     "prisma-generator",
-    "prisma-class-validator-generator"
+    "prisma-class-dto-generator"
   ],
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.12.1",
     "@prisma/generator-helper": "^5.12.1",
     "@prisma/internals": "^5.12.1",
-    "class-validator": "^0.13.2",
+    "class-validator": "^0.14.1",
+    "class-validator-jsonschema": "^5.0.1",
     "pluralize": "^8.0.0",
     "prettier": "^2.8.8",
     "ts-morph": "^22.0.0",
@@ -41,8 +49,8 @@
     "typescript": "^5.4.5"
   },
   "bugs": {
-    "url": "https://github.com/omar-dulaimi/prisma-class-validator-generator/issues"
+    "url": "https://github.com/omar-dulaimi/prisma-class-dto-generator/issues"
   },
-  "homepage": "https://github.com/omar-dulaimi/prisma-class-validator-generator#readme",
+  "homepage": "https://github.com/omar-dulaimi/prisma-class-dto-generator#readme",
   "private": true
 }

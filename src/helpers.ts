@@ -1,12 +1,30 @@
 import type { DMMF as PrismaDMMF } from '@prisma/generator-helper';
 import path from 'path';
+import { promises as fs } from 'fs';
 import {
   DecoratorStructure,
   ExportDeclarationStructure,
+  ImportDeclarationStructure,
   OptionalKind,
   Project,
   SourceFile,
 } from 'ts-morph';
+
+function generateUniqueImports(sourceFile: SourceFile, imports: string[], moduleSpecifier: string) {
+  let existingImport = sourceFile.getImportDeclaration(moduleSpecifier);
+
+  if (!existingImport) {
+    existingImport = sourceFile.addImportDeclaration({
+      moduleSpecifier,
+      namedImports: [],
+    });
+  }
+
+  const namedImports = new Set(existingImport.getNamedImports().map(namedImport => namedImport.getName()));
+  imports.forEach(importName => namedImports.add(importName));
+  existingImport.removeNamedImports();
+  existingImport.addNamedImports(Array.from(namedImports).map(name => ({ name })));
+}
 
 export const generateModelsIndexFile = (
   prismaClientDmmf: PrismaDMMF.Document,
@@ -24,8 +42,8 @@ export const generateModelsIndexFile = (
       .map((model) => model.name)
       .sort()
       .map<OptionalKind<ExportDeclarationStructure>>((modelName) => ({
-        moduleSpecifier: `./${modelName}.model`,
-        namedExports: [modelName],
+        moduleSpecifier: `./${modelName}DTO.model`,
+        namedExports: [`${modelName}DTO`],
       })),
   );
 };
@@ -66,7 +84,9 @@ export const getTSDataTypeFromFieldType = (field: PrismaDMMF.Field) => {
   }
 
   if (field.isList) {
-    type = `${type}[]`;
+    type = `${type}DTO[]`;
+  } else if (field.kind === 'object') {
+    type = `${type}DTO`;
   }
   return type;
 };
@@ -116,6 +136,29 @@ export const getDecoratorsByFieldType = (field: PrismaDMMF.Field) => {
       arguments: [`getEnumValues(${String(field.type)})`],
     });
   }
+  let typeDecorator: OptionalKind<DecoratorStructure> | null = null;
+  decorators.push({ name: 'Expose', arguments: [] });
+  switch (field.type) {
+    case 'Int':
+    case 'Float':
+      decorators.push({ name: 'Type', arguments: ['() => Number'] });
+      break;
+    case 'DateTime':
+      decorators.push({ name: 'Type', arguments: ['() => Date'] });
+      break;
+    case 'String':
+      decorators.push({ name: 'Type', arguments: ['() => String'] });
+      break;
+    case 'Boolean':
+      decorators.push({ name: 'Type', arguments: ['() => Boolean'] });
+      break;
+  }
+  if (typeDecorator) {
+    if (field.isList) {
+      typeDecorator.arguments = [`() => [${(typeDecorator.arguments as string[])[0]}]`];
+    }
+    decorators.push(typeDecorator);
+  }
   return decorators;
 };
 
@@ -150,10 +193,7 @@ export const generateClassValidatorImport = (
   sourceFile: SourceFile,
   validatorImports: Array<string>,
 ) => {
-  sourceFile.addImportDeclaration({
-    moduleSpecifier: 'class-validator',
-    namedImports: validatorImports,
-  });
+  generateUniqueImports(sourceFile, validatorImports, 'class-validator');
 };
 
 export const generatePrismaImport = (sourceFile: SourceFile) => {
@@ -167,11 +207,9 @@ export const generateRelationImportsImport = (
   sourceFile: SourceFile,
   relationImports: Array<string>,
 ) => {
-  sourceFile.addImportDeclaration({
-    moduleSpecifier: './',
-    namedImports: relationImports,
-  });
+  generateUniqueImports(sourceFile, relationImports.map(name => `${name}DTO`), './');
 };
+
 export const generateHelpersImports = (
   sourceFile: SourceFile,
   helpersImports: Array<string>,
@@ -191,10 +229,7 @@ export const generateEnumImports = (
     .map((field) => field.type);
 
   if (enumsToImport.length > 0) {
-    sourceFile.addImportDeclaration({
-      moduleSpecifier: '../enums',
-      namedImports: enumsToImport,
-    });
+    generateUniqueImports(sourceFile, enumsToImport, '../enums');
   }
 };
 
@@ -208,4 +243,61 @@ export function generateEnumsIndexFile(
       namedExports: [name],
     })),
   );
+}
+
+export const generateClassTransformerImport = (
+  sourceFile: SourceFile,
+  transformerImports: Array<string>,
+) => {
+  generateUniqueImports(sourceFile, transformerImports, 'class-transformer');
+};
+
+
+export async function generateDecoratorsFile(outputDir: string) {
+  const content = `
+  import {
+    ValidateNested,
+    ValidationOptions,
+    registerDecorator,
+    ValidationArguments,
+  } from "class-validator";
+  import { Type } from "class-transformer";
+  import { JSONSchema } from "class-validator-jsonschema";
+  
+  export function FixItemJsonSchemaReference(reference: any): PropertyDecorator {
+    return JSONSchema({
+      $ref: \`#/components/schemas/\${reference.name}\`,
+    }) as PropertyDecorator;
+  }
+  
+  export function FixArrayJsonSchemaReference(reference: any): PropertyDecorator {
+    return JSONSchema({
+      type: "array",
+      items: {
+        $ref: \`#/components/schemas/\${reference.name}\`,
+      },
+    }) as PropertyDecorator;
+  }
+  
+  export function Entity(typeFunction: () => Function, isArray: boolean = false): PropertyDecorator {
+    return function (target: Object, propertyKey: string | symbol) {
+      ValidateNested({ each: isArray })(target, propertyKey);
+      Type(typeFunction)(target, propertyKey);
+      if (isArray) {
+        const type = typeFunction();      
+        if (type) {
+          FixArrayJsonSchemaReference(type)(target, propertyKey);
+        }
+      } else {
+        const type = typeFunction();
+        if (type) {
+          FixItemJsonSchemaReference(type)(target, propertyKey);
+        }
+      }
+    };
+  }
+    `;
+
+  const filePath = path.join(outputDir, 'decorators.ts');
+  await fs.writeFile(filePath, content);
 }

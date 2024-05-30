@@ -5,7 +5,7 @@ import path from 'path';
 import generateClass from './generate-class';
 import generateEnum from './generate-enum';
 import { generateHelpersIndexFile } from './generate-helpers';
-import { generateEnumsIndexFile, generateModelsIndexFile } from './helpers';
+import { generateDecoratorsFile, generateEnumsIndexFile, generateModelsIndexFile } from './helpers';
 import { project } from './project';
 import removeDir from './utils/removeDir';
 
@@ -48,6 +48,8 @@ export async function generate(options: GeneratorOptions) {
     { overwrite: true },
   );
   generateHelpersIndexFile(helpersIndexSourceFile);
+
+  await generateDecoratorsFile(outputDir);
 
   generateModelsIndexFile(prismaClientDmmf, project, outputDir);
   await project.save();
